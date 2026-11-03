@@ -15,9 +15,9 @@ Ath12kWifi 实现基于 ath12k 的 Wi-Fi 栈，包含 PCI、MHI、QRTR 和板级
 选择前阅读组件 README 和 `nw_board` 接口。组件目录记录源码版本、OS 要求、构建
 命令和输出。运行组件的主机检查和板级网络验证流程。
 
-## sheng（WCN7850）上的状态
+## WCN7850 参考集成
 
-Ath12kWifi 在自己的兼容层（`shim/`）上编译 Linux 的 ath12k、MHI 和 QMI 源码，并加上自己的 station 层（`src/nw_sta.c`：扫描、加入、WPA2-Personal、数据路径）。板级接口是 `include/nw_abi.h`，`tools/prepare.sh` 获取并打补丁驱动源码。UniXNU-sheng 给芯片上电、训练 PCIe0，并把模块作为 `en0` 接到 iPadOS（`package/WifiProbe.cpp`：电源、PCIe0、固件、DMA、MSI、模块线程；`package/WifiNet.cpp`：`en0` 与系统的 Wi-Fi 请求）。
+Ath12kWifi 在自己的兼容层（`shim/`）上编译 Linux 的 ath12k、MHI 和 QMI 源码，并加上自己的 station 层（`src/nw_sta.c`：扫描、加入、WPA2-Personal、数据路径）。板级接口是 `include/nw_abi.h`，`tools/prepare.sh` 获取并打补丁驱动源码。板级集成给芯片上电、训练 PCIe0，并把模块作为 `en0` 接到 iOS（`package/WifiProbe.cpp`：电源、PCIe0、固件、DMA、MSI、模块线程；`package/WifiNet.cpp`：`en0` 与系统的 Wi-Fi 请求）。
 
 状态：能加入 WPA2-Personal、获得 DHCP、Safari 能打开页面。吞吐量低。
 
@@ -28,7 +28,7 @@ Ath12kWifi 在自己的兼容层（`shim/`）上编译 Linux 的 ath12k、MHI �
 
 ### iPadOS 27 服务启动
 
-sheng 的板级 DTS 通过 `unixnu,adt-name = "wlan"` 将 WCN7850 导出为
+参考板级 DTS 通过 `unixnu,adt-name = "wlan"` 将 WCN7850 导出为
 `/arm-io/wlan`。24A446 原生 `com.apple.wifid` 任务带有
 `_LimitLoadToDeviceTree` 条件，launchd 加载前会检查。缺少匹配节点时，
 内核的 `join.txt` 路径仍能连接并收发数据，但设置中的 Wi-Fi 页面为空，
@@ -36,9 +36,20 @@ sheng 的板级 DTS 通过 `unixnu,adt-name = "wlan"` 将 WCN7850 导出为
 这个设备树条件。
 
 27 的默认 payload 参数包含 `sheng-wifi=5`。修改 DTS 后需要重新生成
-payload 和 boot 镜像，并检查镜像内的 ADT。主机检查确认节点满足启动条件；
-wifid 启动、设置开关和扫描功能仍需上机验证。手动测试镜像的启动参数应移除
-`sheng-autoreset`。
+payload 和 boot 镜像，并检查镜像内的 ADT。该集成让设置页面可以切换
+Wi-Fi 开关并显示 SSID 列表。手动测试镜像应移除 `sheng-autoreset`。
+
+WifiNet 支持 592 字节的旧版关联请求和 656 字节的 24A446 请求，
+并在认证前校验凭据。手动 WPA2 关联和 DHCP 已获上机确认。
+
+关闭 Wi-Fi 或断开连接会发布链路断开通知，并隐藏旧连接状态。
+重复加入当前网络会回报完成；切换网络会等待旧连接断开后再提交新请求。
+认证查询将 WPA2 个人网络报告为 0x10。AddressSanitizer 和
+UndefinedBehaviorSanitizer 主机回归测试、内核与 payload 编译、镜像校验
+均已通过。当前镜像的加入网络、网络切换、Wi-Fi 图标和密码弹窗行为待上机验证。
+
+吞吐量偏低，仍待排查。使用 `log-wifi=1` 记录加入日志，
+使用 `sheng-wifi-aj=0` 关闭驱动自动连接。
 
 ### 事实
 
